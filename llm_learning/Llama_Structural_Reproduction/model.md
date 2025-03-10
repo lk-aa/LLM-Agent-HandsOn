@@ -25,7 +25,6 @@ LLaMA 3.1的模型结构如下图所示，它代表了目前主流的大型语�
 
 <center><img src="assets/model_architecture.png" alt="描述文字" width="600"></center>
 
-
 ## 1. Token Embedding层
 
 ### 1.1 Embedding原理
@@ -47,6 +46,7 @@ torch.nn.Embedding(num_embeddings, embedding_dim)
 - `nn.Embedding`的输入通常是整数（类别索引或词汇索引），它会根据输入的索引从一个大小为 `(num_embeddings, embedding_dim)` 的查找表中检索出相应的嵌入向量。
 
 ### 1.3 代码解析
+
 ```python
 import torch
 import torch.nn as nn
@@ -93,6 +93,7 @@ BN 和 LN 的差别就在$mu_i$和 $\sigma_i$这里，前者在某一个 Batch �
 <center><img src="https://skojiangdoc.oss-cn-beijing.aliyuncs.com/2024LLM/19.png" alt="描述文字" width="600"></center>
 
 区别：
+
 * NLP任务中经常会处理长度不同的句子，使用LN时可以不考虑其它样本的长度。<br><br>
 * 在某些情况下，当可用的内存有限或者为了加速训练而使用更小的batch时，BN因为batch数量不足而受到了限制。<br><br>
 * 在某些NLP任务和解码设置中，模型可能会一个接一个地处理序列中的元素，而不是一次处理整个batch。这样BN就不是很适用了。<br><br>
@@ -104,15 +105,18 @@ BN 和 LN 的差别就在$mu_i$和 $\sigma_i$这里，前者在某一个 Batch �
 **RMSNorm** 和 **普通 LayerNorm** 的主要区别在于归一化的计算方式：
 
 1. **归一化公式**：  
+   
    - **LayerNorm** 会对输入特征的均值和方差进行计算，然后用这些统计量对每个特征进行归一化。
    - **RMSNorm** 只计算输入特征的均方根 (RMS, Root Mean Square)，而不考虑均值。因此，RMSNorm 去掉了均值的计算，直接利用每个特征的均方根进行归一化。
-<br><br>
+     <br><br>
 
 2. **计算简化**：  
+   
    - **LayerNorm** 需要同时计算均值和方差，涉及更多的计算步骤。
    - **RMSNorm** 只需要计算输入的均方根，计算量更小。
 
 区别: 
+
 - **更少的计算开销**：由于去除了对均值的计算，RMSNorm 的计算开销相比 LayerNorm 更小，尤其在大规模模型中表现更为高效。
 - **训练稳定性**：RMSNorm 保留了归一化的效果，能够稳定训练过程，同时在某些场景下表现出更好的收敛性。
 - **适合大模型**：RMSNorm 因其简化的计算过程，特别适合像 LLaMA 这样的大模型，可以提高训练和推理的效率。
@@ -188,7 +192,6 @@ class RMSNorm(torch.nn.Module):
 
 ### 2.5 Instance & Visualization
 
-
 ```python
 import torch
 
@@ -217,6 +220,7 @@ torch.rsqrt(exp.pow(2).mean(-1, keepdim=True))
 RoPE 的核心思想是将**位置编码**嵌入到每个输入的特征维度中，而不是像传统的绝对位置编码那样为每个位置生成单独的向量。具体而言，RoPE将输入特征通过一个与位置相关的**旋转变换**，在不同位置上通过旋转不同角度来表达位置信息。
 
 具体地:
+
 1. **嵌入位置信息**：  
    通过使用旋转矩阵，RoPE能够在同一特征空间中嵌入位置信息，并且这种旋转变换可以是连续的，使得模型可以处理不同长度的序列输入，而不依赖于绝对位置编码的长度限制。
 
@@ -228,6 +232,7 @@ RoPE 的核心思想是将**位置编码**嵌入到每个输入的特征维度�
 <center><img src="https://skojiangdoc.oss-cn-beijing.aliyuncs.com/2024LLM/07.webp" alt="描述文字" width="600"></center>
 
 **Rotary Positional Embedding**（旋转位置编码）的流程可以如下解释——
+
 1. **x1 和 x2 是 token 的原始编码值**。
 2. **θ1（theta1）** 是一个常数，为每两维度的编码设置。我们将[$\theta_1, \theta_2...\theta_{d/2}$]这个序列总称为“频率”。
 3. **m 是 position（位置）**，表示当前 token 在序列中的位置。
@@ -236,6 +241,7 @@ RoPE 的核心思想是将**位置编码**嵌入到每个输入的特征维度�
 这个过程的核心是通过旋转操作引入位置相关的信息，这种方法可以使得模型对相对位置更加敏感，同时保持旋转不变性。
 
 ### 3.3 RoPE优点
+
 - **相对位置感知**：RoPE 自然具备相对位置感知能力（因为它具有一定的循环性），因此模型可以更好地处理较长序列中的相对位置信息。
 - **长度灵活性**：相比于绝对位置编码，RoPE 可以更加灵活地处理不同长度的序列，而不会受到编码长度的限制。
 - **平滑的位置信息传递**：通过旋转变换的方式嵌入位置信息，使得位置信息在整个特征空间中平滑地传递，避免了绝对位置编码的离散性。
@@ -249,6 +255,7 @@ RoPE 的核心思想是将**位置编码**嵌入到每个输入的特征维度�
 ### 3.5 RoPE Code
 
 **<font size=3 color=skyblue>Code 1: 预计算位置编码的复数形式</font>**
+
 ```python
 def precompute_pos_cis(dim: int, max_position: int, theta: float = 10000.0):
     """
@@ -273,7 +280,7 @@ def precompute_pos_cis(dim: int, max_position: int, theta: float = 10000.0):
 
     # 将频率转换为复数形式
     pos_cis = torch.polar(torch.ones_like(freqs), freqs)
-    
+
     return pos_cis    # (max_position, dim/2)  & (seq_len,d_model/2)
 ```
 
@@ -307,6 +314,7 @@ torch.arange(0, dim, 2)[: (dim // 2)]
 `torch.polar(abs, angle)` 是 PyTorch 中的一个函数，它将给定的模长（`abs`）和角度（`angle`）转换为复数形式。复数的表示方式如下：
 $$ z = r \cdot e^{i \theta} $$
 其中：
+
 - $ z $ 是复数，
 - $ r $ 是模长，
 - $ \theta $是角度，
@@ -361,6 +369,7 @@ $$
 ### 3.7 RoPE Code 2
 
 **<font size=3 color=skyblue>Code 2: 预计算位置编码的复数形式</font>**
+
 ```python
 # 将频率（位置编码）应用于查询矩阵 q 和键矩阵 k
 def apply_rotary_emb(xq, xk, pos_cis):
@@ -409,23 +418,27 @@ def apply_rotary_emb(xq, xk, pos_cis):
 这个函数 `apply_rotary_emb` 用于在计算自注意力机制时将旋转嵌入（rotary embeddings）应用到查询（`q`）和键（`k`）矩阵上。这种旋转嵌入是通过将频率（`pos_cis`）与 `q` 和 `k` 矩阵相结合来实现的，目的是提升模型对位置信息的编码能力。
 
 **<font size=3 color=pink>(Code 2) Problem 1: 输入参数</font>**
-   - `xq`: 查询矩阵，通常来自自注意力机制中的查询。
-   - `xk`: 键矩阵，通常来自自注意力机制中的键。
-   - `pos_cis`: 位置编码信息，通常是通过旋转嵌入（rotary embeddings）生成的。
+
+- `xq`: 查询矩阵，通常来自自注意力机制中的查询。
+- `xk`: 键矩阵，通常来自自注意力机制中的键。
+- `pos_cis`: 位置编码信息，通常是通过旋转嵌入（rotary embeddings）生成的。
 
 **<font size=3 color=pink>(Code 2) Problem 2:  关键步骤</font>**
-   - **`unite_shape`**: 调整 `pos_cis` 的形状，使其可以通过广播机制与 `xq` 和 `xk` 相乘。
-   - **`torch.view_as_complex`**: 将查询矩阵 `xq` 和键矩阵 `xk` 的最后一维转换为复数表示（通过将最后一维分成实部和虚部）。
-   - **复数乘法**：将复数表示的 `xq` 和 `xk` 分别与位置编码 `pos_cis` 进行复数乘法。复数乘法会同时影响向量的幅度和相位（实现位置编码的效果）。
-   - **`torch.view_as_real`**: 将复数乘法的结果转换回实数形式，并将结果展平为原来的形状。
-   - **`flatten(3)`**: 展平最后两个维度，使得张量形状回归到与输入相同的结构。
+
+- **`unite_shape`**: 调整 `pos_cis` 的形状，使其可以通过广播机制与 `xq` 和 `xk` 相乘。
+- **`torch.view_as_complex`**: 将查询矩阵 `xq` 和键矩阵 `xk` 的最后一维转换为复数表示（通过将最后一维分成实部和虚部）。
+- **复数乘法**：将复数表示的 `xq` 和 `xk` 分别与位置编码 `pos_cis` 进行复数乘法。复数乘法会同时影响向量的幅度和相位（实现位置编码的效果）。
+- **`torch.view_as_real`**: 将复数乘法的结果转换回实数形式，并将结果展平为原来的形状。
+- **`flatten(3)`**: 展平最后两个维度，使得张量形状回归到与输入相同的结构。
 
 **<font size=3 color=pink>(Code 2) Problem 3:  返回参数</font>**
-   - 返回应用了旋转嵌入的查询矩阵和键矩阵。
+
+- 返回应用了旋转嵌入的查询矩阵和键矩阵。
 
 ### 3.8 位置编码比较
 
 **<font size=3 color=skyblue>Q1: 为什么不直接使用正余弦位置编码？旋转位置编码有什么好处？</font>**
+
 1. **相对位置信息的编码**：与传统的正余弦编码主要侧重于绝对位置不同，RoPE能够自然地融入**相对位置信息**。这使得模型可以更好地理解序列中各个词之间的相对关系，对于那些词与词之间距离影响其关联性的任务尤为重要。RoPE通过在注意力机制中旋转查询和键向量，并且随着词之间距离的增加，它们的内积逐渐减弱，这有助于更好地模拟自然语言中远距离词语关联度降低的现象。
 
 > **正余弦位置编码**（Positional Encoding）的确利用了周期性函数（如正弦和余弦）来表示位置信息，其基本原理是通过不同频率的正弦和余弦函数来为每个位置分配一个独特的向量。这个向量的不同维度对不同频率进行编码，从而使得每个位置都有一个唯一的编码值，因此正余弦编码虽然是周期性的，但**它本质上是绝对位置编码**，因为它依赖于位置的绝对值。也就是说，它为每个特定的位置生成一个固定的编码，而不考虑其他位置。例如，序列中的第5个词和第10个词，即使它们距离很近或很远，它们的编码值只取决于它们在序列中的具体位置（即位置5和位置10），而不是它们之间的相对距离。相比之下，旋转位置编码（RoPE）将关注点放在相对位置上。它通过在自注意力机制中旋转查询和键向量，使得随着两个词之间距离的增加，它们的点积逐渐衰减，从而在模型中直接融入相对位置信息。这样，旋转位置编码可以更好地处理序列中相对距离的变化，而正余弦编码则更专注于词语的绝对位置。
@@ -458,28 +471,33 @@ $$
 以下是KV缓存机制的详细工作原理。注意，**KV缓存大部分时候适用于<font color=skyblue>推理</font>，因此这个流程大部分时候是自回归的**。
 
 1. **初始化**：
+   
    - 当生成开始时，模型计算输入序列的Key和Value，并将这些计算结果缓存起来，保存在内存中。
-     
+   
    - **大部分时候，每个注意力层都会有一对Key-Value缓存，这个缓存是在自回归的每次循环中共用。然而，有时我们也可以在多头注意力机制中、只保留一个头或两个头上的KV值，并共享给所有的头使用**。其中，每次循环中的kv缓存，是推理中常见的用法。多头共享kv的缓存，可以被用于训练和推理两个流程，但可能伤害训练的结果。
-     
+   
    - 这些缓存的Key和Value会存储到KV缓存中，并作为后续生成步骤中的参考。
 
 2. **生成过程中**：
+   
    - 当生成下一个token时，模型不需要重新计算前面已经生成的token的Key和Value。它会直接使用之前缓存的Key和Value。
    - 只需要计算当前token的Query，并将它与已经缓存的Key进行点积计算，得出注意力分数。
    - 这些注意力分数会结合缓存的Value来计算当前token的输出。
 
 3. **更新缓存**：
+   
    - 对于每一个生成步骤，模型还会将当前生成的token的Key和Value加入缓存，确保缓存中的Key和Value始终保持更新，包含所有已经生成的tokens。
    - 缓存的大小会逐渐增加，最终会包含所有生成序列的Key和Value。
 
 4. **加速效果**：
+   
    - 由于每个生成步骤只需要计算当前token的Query，而不需要重新计算整个序列的Key和Value，这大大减少了计算量。
    - 随着序列长度增加，缓存的使用能够显著减少时间复杂度，使生成过程更快。
-   
+
 ### 4.3 KV Cache Code
 
 **<font size=3 color=skyblue>Code 1: repeat_kv</font>**
+
 ```python
 def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
     """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
@@ -494,6 +512,7 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 ```
 
 **<font size=3 color=skyblue>Code 1: 代码解读</font>**
+
 ```python
 def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
     """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
@@ -531,18 +550,20 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 **<font size=3 color=pink>(Code 1)Problem 1: KV缓存的优点</font>**
 
 1. **提高生成速度**：由于避免了对已经生成token的重复计算，KV缓存机制可以显著减少生成时间，特别是在长序列生成任务中。
-   
+
 2. **节省计算资源**：缓存Key和Value后，每一步生成仅需计算当前token的Query，而Key和Value可以从缓存中提取，从而大幅减少每一步的计算量。
 
 3. **降低复杂度**：使用缓存后，生成过程中的注意力机制从 O(n²) 降为 O(n)，其中 n 是序列长度。对于长序列生成任务，这种加速效果尤为显著。
 
 **<font size=3 color=pink>(Code 1)Problem 2: KV缓存与DeepSpeed和Hugging Face的结合</font>**
+
 > - **DeepSpeed**：KV缓存在DeepSpeed等加速框架中发挥更大作用，DeepSpeed可以进一步优化KV缓存的使用，利用其高效的并行和内存管理机制，进一步提升生成过程中的性能。<br><br>
 > - **Hugging Face**：Hugging Face的模型可以直接支持KV缓存，特别是其`generate`函数可以通过指定`kv_cache=True`来启用KV缓存，优化推理和生成过程。
 
 ### 4.4 KV Cache Code 2
 
 **<font size=3 color=skyblue>Code 2: Attention 注意力机制</font>**
+
 ```python
 class Attention(nn.Module):
     def __init__(self, args: LMConfig):
@@ -606,7 +627,7 @@ class Attention(nn.Module):
         freqs = torch.outer(m, freqs).float()
         pos_cis = torch.polar(torch.ones_like(freqs), freqs)
         return pos_cis
-    
+
     def forward(self, x: torch.Tensor, kv_cache=False):
 
         # 作为注意力机制，被输入的x就是原始数据x
@@ -671,7 +692,7 @@ class Attention(nn.Module):
             # 不使用flash attention，就自己计算
             # 这里的transpose是对最后两个维度的转置
             scores = torch.matmul(xq, xk.transpose(2, 3)) / math.sqrt(self.head_dim)
-            
+
             # 在注意力分数上放上掩码
             # 如果有kv缓存的话，现在我们的kv矩阵可能会比掩码矩阵要大了
             # 获取缓存的长度
@@ -684,9 +705,9 @@ class Attention(nn.Module):
                 new_mask = torch.full((1, 1, total_len, total_len), float("-inf")).to(x.device)
                 new_mask = torch.triu(new_mask, diagonal=1)  # 生成前瞻掩码
                 self.mask = new_mask  # 更新掩码矩阵
-            
+
             scores = scores + self.mask[:, :, :seqlen, :seqlen]
-                
+
             # 对最后一个维度求解softmax
             scores = F.softmax(scores.float(), dim=-1).type_as(xq)
             scores = self.attn_dropout(scores)
@@ -705,7 +726,6 @@ class Attention(nn.Module):
 
 ### 4.5 代码实践
 
-
 ```python
 class Attention(nn.Module):
     def __init__(self, args: LMConfig):
@@ -769,7 +789,7 @@ class Attention(nn.Module):
         freqs = torch.outer(m, freqs).float()
         pos_cis = torch.polar(torch.ones_like(freqs), freqs)
         return pos_cis
-    
+
     def forward(self, x: torch.Tensor, kv_cache=False):
 
         # 作为注意力机制，被输入的x就是原始数据x
@@ -834,7 +854,7 @@ class Attention(nn.Module):
             # 不使用flash attention，就自己计算
             # 这里的transpose是对最后两个维度的转置
             scores = torch.matmul(xq, xk.transpose(2, 3)) / math.sqrt(self.head_dim)
-            
+
             # 在注意力分数上放上掩码
             # 如果有kv缓存的话，现在我们的kv矩阵可能会比掩码矩阵要大了
             # 获取缓存的长度
@@ -847,9 +867,9 @@ class Attention(nn.Module):
                 new_mask = torch.full((1, 1, total_len, total_len), float("-inf")).to(x.device)
                 new_mask = torch.triu(new_mask, diagonal=1)  # 生成前瞻掩码
                 self.mask = new_mask  # 更新掩码矩阵
-            
+
             scores = scores + self.mask[:, :, :seqlen, :seqlen]
-                
+
             # 对最后一个维度求解softmax
             scores = F.softmax(scores.float(), dim=-1).type_as(xq)
             scores = self.attn_dropout(scores)
@@ -867,7 +887,6 @@ class Attention(nn.Module):
 ```
 
 **<font color=skyblue size=3>模型验证</font>**
-
 
 ```python
 import torch
@@ -926,13 +945,11 @@ def apply_rotary_emb(xq, xk, pos_cis):
     return xq_out.type_as(xq), xk_out.type_as(xk)
 ```
 
-
 ```python
 # 创建假设输入
 x = torch.randn(2, 10, 512)  # (batch_size=2, seq_len=10, dim=512)
 pos_cis = precompute_pos_cis(dim=64, max_position = 10, theta=10000)
 ```
-
 
 ```python
 # 创建Attention实例
@@ -943,15 +960,9 @@ output = attention(x,kv_cache=True)
 output.shape
 ```
 
-
-
-
     torch.Size([2, 10, 512])
 
-
-
 **<font color=skyblue size=3>验证是否开启kv缓存会带来的运算速度变化</font>**
-
 
 ```python
 import time
@@ -963,7 +974,6 @@ def measure_inference_time(attention, x, kv_cache):
     end_time = time.time()
     return end_time - start_time
 ```
-
 
 ```python
 # 创建假设输入
@@ -979,8 +989,6 @@ print(f"推理时间（关闭kv_cache）: {time_without_cache:.6f} 秒")
 ```
 
     推理时间（关闭kv_cache）: 0.030864 秒
-    
-
 
 ```python
 # 模拟逐步生成的推理输入（关闭kv_cache）
@@ -999,8 +1007,6 @@ print(f"推理时间（关闭kv_cache）: {time_with_cache:.6f} 秒")
 ```
 
     推理时间（关闭kv_cache）: 151.089294 秒
-    
-
 
 ```python
 # 模拟逐步生成的推理输入（开启kv_cache）
@@ -1019,7 +1025,6 @@ print(f"推理时间（开启kv_cache）: {time_with_cache:.6f} 秒")
 ```
 
     推理时间（开启kv_cache）: 137.913704 秒
-    
 
 ## 5. 门控前馈神经网络 FFN with SwiGLU
 
@@ -1028,18 +1033,18 @@ print(f"推理时间（开启kv_cache）: {time_with_cache:.6f} 秒")
 ![](https://skojiangdoc.oss-cn-beijing.aliyuncs.com/2024LLM/15.png)
 
 > **典型前馈网络**：
-$$
-  \text{Output} = \text{Linear2}(\text{Activation}(\text{Linear1}(x)))
-$$
-  它通过一个线性层（`Linear1`），一个非线性激活函数（如ReLU或GELU），然后通过另一个线性层（`Linear2`）。
+> $$
+>   \text{Output} = \text{Linear2}(\text{Activation}(\text{Linear1}(x)))
+> $$
+>   它通过一个线性层（`Linear1`），一个非线性激活函数（如ReLU或GELU），然后通过另一个线性层（`Linear2`）。
 
 > **llama中的前馈神经网络**
-$$
-\text{Output} = \text{Linear2}
-\left( \textcolor{red}{\text{Activation}}\left( \textcolor{green}{\text{Linear1}}(x) \right) 
-\odot \textcolor{gold}{\text{Linear3}}(x) \right)
-$$
-  它通过两个线性层（`Linear1`和`Linear3`），从`Linear1`输出的结果经过silu激活函数后，与`Linear3`输出的结果进行逐元素乘法，然后通过另一个线性层（`Linear2`）。
+> $$
+> \text{Output} = \text{Linear2}
+> \left( \textcolor{red}{\text{Activation}}\left( \textcolor{green}{\text{Linear1}}(x) \right) 
+> \odot \textcolor{gold}{\text{Linear3}}(x) \right)
+> $$
+>   它通过两个线性层（`Linear1`和`Linear3`），从`Linear1`输出的结果经过silu激活函数后，与`Linear3`输出的结果进行逐元素乘法，然后通过另一个线性层（`Linear2`）。
 
 为什么llama要做这样的修改呢？为了要了解这个前馈网络的机制，我们先要了解一下SwiGLU激活函数。
 
@@ -1055,16 +1060,16 @@ $$
 $$
 
 其中：
+
 - $W_1^a$ 和 $W_1^b$ 是线性变换（全连接层）。
 - $\odot$ 表示 **逐元素乘法**（element-wise multiplication）。
 - **GELU**（Gaussian Error Linear Unit）是一个非线性激活函数，它与ReLU激活函数类似，但它比 ReLU 更平滑，适用于深度模型。
 
-| **特性**           | **ReLU**                        | **GELU**                      | **SwiGLU with GELU**                    |
-|--------------------|---------------------------------|--------------------------------|--------------------------------|
-| **表达能力**       | 线性激活，易丢失负值信息         | 平滑激活，但无门控机制         | 动态门控，表达能力最强         |
-| **梯度流动**       | 负值梯度为 0，可能导致死神经元   | 平滑梯度流动                   | 更平滑的梯度流动，训练更稳定   |
-| **训练效率**       | 计算简单，但可能不稳定           | 计算稍复杂，但效果更好         | 高效计算，适合大规模模型       |
-
+| **特性**   | **ReLU**         | **GELU**    | **SwiGLU with GELU** |
+| -------- | ---------------- | ----------- | -------------------- |
+| **表达能力** | 线性激活，易丢失负值信息     | 平滑激活，但无门控机制 | 动态门控，表达能力最强          |
+| **梯度流动** | 负值梯度为 0，可能导致死神经元 | 平滑梯度流动      | 更平滑的梯度流动，训练更稳定       |
+| **训练效率** | 计算简单，但可能不稳定      | 计算稍复杂，但效果更好 | 高效计算，适合大规模模型         |
 
 ```python
 import numpy as np
@@ -1133,23 +1138,19 @@ plt.tight_layout()
 plt.show()
 ```
 
-
-    
 ![png](output_52_0.png)
-    
-
 
 - **门控机制为什么高效**？
 
 门控机制（Gating Mechanism）是深度学习中的一种重要设计，它通过动态选择信息流，提升模型的表达能力和训练效率。相比于单纯的线性变换和激活函数，门控机制更灵活，使模型能够根据输入数据的特性决定哪些信息需要传递、哪些信息需要抑制。
 
-| **优势**                   | **解释**                                              |
-|----------------------------|-------------------------------------------------------|
-| **避免冗余计算**           | 只让有用的信息通过，抑制无关信息，提升计算效率。       |
-| **强化非线性表达能力**     | 通过多条路径组合增强模型的表达能力。                   |
-| **改善梯度流动**           | 减少梯度消失问题，提高深层网络的训练效率。             |
-| **自适应学习能力**         | 根据不同输入动态选择信息流，提高任务适应性。            |
-| **多任务场景中的共享能力** | 在多任务或多模态模型中更智能地控制信息流动路径。         |
+| **优势**          | **解释**                   |
+| --------------- | ------------------------ |
+| **避免冗余计算**      | 只让有用的信息通过，抑制无关信息，提升计算效率。 |
+| **强化非线性表达能力**   | 通过多条路径组合增强模型的表达能力。       |
+| **改善梯度流动**      | 减少梯度消失问题，提高深层网络的训练效率。    |
+| **自适应学习能力**     | 根据不同输入动态选择信息流，提高任务适应性。   |
+| **多任务场景中的共享能力** | 在多任务或多模态模型中更智能地控制信息流动路径。 |
 
 **总结**：门控机制通过**逐元素乘法和动态调控**，使模型能够高效选择性地传递信息，避免了简单线性流程中的冗余计算和信息丢失问题。相比于传统的线性层，门控机制不仅**提高了计算效率**，还增强了模型的**非线性表达能力**和**训练稳定性**，使其在 NLP 和计算机视觉等复杂任务中表现更加优异。
 
@@ -1164,8 +1165,10 @@ $$
 $$
 
 其中：
+
 - $x$ 是输入值。
 - $\sigma(x)$ 是 **Sigmoid** 函数：
+  
   $$
   \sigma(x) = \frac{1}{1 + e^{-x}}
   $$
@@ -1179,7 +1182,6 @@ $$
 $$
 
 其函数图像与梯度图像如下👇
-
 
 ```python
 import numpy as np
@@ -1224,40 +1226,34 @@ plt.legend()
 plt.show()
 ```
 
-
-    
 ![png](output_57_0.png)
-    
-
 
 这样的结构被发现非常适应深度神经网络、尤其是Transformer结构，总结一下SiLU激活函数有如下的优点👇
 
 1. **更好的梯度流动**：SiLU 在负值区域不会完全输出 0，因此减少了梯度消失和死神经元问题。
-<br><br>
+   <br><br>
 2. **平滑激活**：由于 SiLU 是平滑的，它在训练过程中提供了更平稳的梯度更新，使模型更容易收敛。
-<br><br>
+   <br><br>
 3. **自适应线性和非线性**：对于较大的正值输入，SiLU 的输出接近于线性；而对较小的负值输入，它会进行压缩处理。这种自适应特性增强了模型对复杂模式的捕捉能力。
-<br><br>
+   <br><br>
 4. **计算效率高**：SiLU 的计算复杂度适中，且在现代 GPU/TPU 上的计算效率非常高。
 
-| **特性**        | **ReLU**                       | **GELU**                     | **SiLU**                      |
-|-----------------|--------------------------------|------------------------------|-------------------------------|
-| **平滑性**      | 不平滑                         | 平滑                         | 平滑                          |
-| **负值处理**    | 输出 0                         | 有负值输出                    | 更加平滑的负值输出                    |
-| **梯度流动**    | 负值区域无梯度                 | 平滑梯度流动                 | 全范围平滑梯度流动            |
-| **表达能力**    | 适中                           | 强                           | 强，且自适应线性/非线性       |
-| **计算复杂度**  | 低                             | 较高                         | 适中                          |
-
+| **特性**    | **ReLU** | **GELU** | **SiLU**     |
+| --------- | -------- | -------- | ------------ |
+| **平滑性**   | 不平滑      | 平滑       | 平滑           |
+| **负值处理**  | 输出 0     | 有负值输出    | 更加平滑的负值输出    |
+| **梯度流动**  | 负值区域无梯度  | 平滑梯度流动   | 全范围平滑梯度流动    |
+| **表达能力**  | 适中       | 强        | 强，且自适应线性/非线性 |
+| **计算复杂度** | 低        | 较高       | 适中           |
 
 因此在LLaMA的前馈神经网络中我们实现的实际上是——
 
 > **SwiGLU with Silu**
-$$
-\text{Output} = \text{Linear2}
-\left( \textcolor{red}{\text{Silu}}\left( \textcolor{green}{\text{Linear1}}(x) \right) 
-\odot \textcolor{gold}{\text{Linear3}}(x) \right)
-$$
-
+> $$
+> \text{Output} = \text{Linear2}
+> \left( \textcolor{red}{\text{Silu}}\left( \textcolor{green}{\text{Linear1}}(x) \right) 
+> \odot \textcolor{gold}{\text{Linear3}}(x) \right)
+> $$
 
 ```python
 class FeedForward(nn.Module):
@@ -1286,59 +1282,43 @@ if hidden_dim is None:
 ```
 
 这三步的设置逻辑如下：
+
 1. **Step 1**：`hidden_dim = 4 * dim`  
-> 这是常见的做法，类似于 **Transformer** 的前馈网络中使用的隐藏维度。将隐藏层设为输入维度的 4 倍，可以增强网络的非线性表达能力。
+   
+   > 这是常见的做法，类似于 **Transformer** 的前馈网络中使用的隐藏维度。将隐藏层设为输入维度的 4 倍，可以增强网络的非线性表达能力。
 
 2. **Step 2**：`hidden_dim = int(2 * hidden_dim / 3)` 
-> 这里缩小了隐藏维度，将其减少到 **原值的 2/3**。这一步背后的原因通常是为了**平衡计算开销和模型容量**。隐藏层的维度直接决定了模型的参数量和计算开销。如果按照传统做法设置为 **4 倍的输入维度**，模型可能在某些任务中变得过大，训练和推理的时间复杂度较高。缩减到 2/3，可以**减少 1/3 的参数量**和计算成本，这对于大模型或资源受限的设备非常重要。在一些现代 Transformer 模型（例如 LLaMA）中，缩减隐藏层维度是一种经验优化。研究表明，减少隐藏维度（例如从 $4 \cdot d$ 缩减到 $\frac{8}{3} \cdot d$）往往能在**模型性能和效率之间取得良好平衡**。
+   
+   > 这里缩小了隐藏维度，将其减少到 **原值的 2/3**。这一步背后的原因通常是为了**平衡计算开销和模型容量**。隐藏层的维度直接决定了模型的参数量和计算开销。如果按照传统做法设置为 **4 倍的输入维度**，模型可能在某些任务中变得过大，训练和推理的时间复杂度较高。缩减到 2/3，可以**减少 1/3 的参数量**和计算成本，这对于大模型或资源受限的设备非常重要。在一些现代 Transformer 模型（例如 LLaMA）中，缩减隐藏层维度是一种经验优化。研究表明，减少隐藏维度（例如从 $4 \cdot d$ 缩减到 $\frac{8}{3} \cdot d$）往往能在**模型性能和效率之间取得良好平衡**。
 
 3. **Step 3**：`hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)`  
-> 这一步确保隐藏维度是 **multiple_of** 的倍数，以优化 GPU 计算效率。
-
+   
+   > 这一步确保隐藏维度是 **multiple_of** 的倍数，以优化 GPU 计算效率。
 - multiple_of是什么？
 
 在FFN实际实现的过程中，multiple_of是我们用来控制hidden_dim大小的关键参数，它代表“你想要让你的hidden_dim能整除某个数吗？”
-
 
 ```python
 int(2* (4 * 512) / 3)
 ```
 
-
-
-
     1365
-
-
-
 
 ```python
 multiple_of = 4
 ```
 
-
 ```python
 multiple_of * ((1365 + multiple_of-1) // multiple_of)
 ```
 
-
-
-
     1368
-
-
-
 
 ```python
 1368//4
 ```
 
-
-
-
     342
-
-
 
 ## 6. 混合专家网络用于FFN层
 
@@ -1358,33 +1338,41 @@ $$
 MoE 已经广泛应用于大规模自然语言处理模型（如 GShard、Switch Transformer 等），并在计算机视觉等领域表现出色。其核心优势在于：**模型具有超大参数量**，但每次推理或训练时，只使用部分参数来进行计算。
 
 - **MoE 的核心公式：**
-$$
-\text{Output} = \sum_{i=1}^N G_i(x) \cdot E_i(x)
-$$
-> - **$E_i(x)$**：第 $i$ 个专家模型的输出。
-> - **$G_i(x)$**：由路由器（Gate）计算得到的权重，决定哪些专家应该被激活、每个专家被激活的程度有多大。
-> - **N**：专家模型的总数。通常来说，我们不会采用全部的专家的结果，而是采用权重最大的top-k个专家的结果，因此在实际计算时，N往往会被k所替代。
+  
+  $$
+  \text{Output} = \sum_{i=1}^N G_i(x) \cdot E_i(x)
+  $$
+  
+  > - **$E_i(x)$**：第 $i$ 个专家模型的输出。
+  > - **$G_i(x)$**：由路由器（Gate）计算得到的权重，决定哪些专家应该被激活、每个专家被激活的程度有多大。
+  > - **N**：专家模型的总数。通常来说，我们不会采用全部的专家的结果，而是采用权重最大的top-k个专家的结果，因此在实际计算时，N往往会被k所替代。
 
 - **主要组件：**
-> 1. **专家模型（Experts）**：多个全连接层或其他子模型，每个专家处理输入的不同部分或模式。
-> 2. **路由器（Router/Gate）**：为每个输入选择合适的专家（可以是一个或多个），并为每个被选中的专家分配权重。
-> 3. **Sparse Activation**：每次计算时，只激活少数几个专家，大幅减少计算开销。在实际计算中，路由器（Gate）不会为所有专家分配非零权重，而是选择Top-k 个权重最高的专家激活。未被激活的专家（即 Top-k 之外的专家）的输出将不会参与计算，它们的权重$G_i(x)$会是0。
+  
+  > 1. **专家模型（Experts）**：多个全连接层或其他子模型，每个专家处理输入的不同部分或模式。
+  > 2. **路由器（Router/Gate）**：为每个输入选择合适的专家（可以是一个或多个），并为每个被选中的专家分配权重。
+  > 3. **Sparse Activation**：每次计算时，只激活少数几个专家，大幅减少计算开销。在实际计算中，路由器（Gate）不会为所有专家分配非零权重，而是选择Top-k 个权重最高的专家激活。未被激活的专家（即 Top-k 之外的专家）的输出将不会参与计算，它们的权重$G_i(x)$会是0。
 
 <font color="red">**关键问题1：MoE与Transformer架构或LLaMA架构有什么关系？**</font>
 
 MoE作为很好的输出模型，可以用于代替**Transformer**中的**前馈网络（FFN）层**。
+
 > **提高模型的表达能力**
+> 
 > - 在传统 FFN 中，每一层使用相同的参数处理所有输入。这限制了模型的表达能力。
 > - 在 MoE 中，不同的专家网络可以学习**不同的模式**，每次处理输入时，动态选择不同的专家来增强模型的灵活性。
 
 > **参数量高，但计算量低**
+> 
 > - 使用 MoE 后，模型的总参数量增加，但每次前向传播时，只激活**部分专家**，因此**计算量并不会线性增加**。
 > - 例如：在 Switch Transformer 中，即使模型拥有 **1.6 万亿参数**，每次推理时只使用不到 1% 的参数。
 
 > **增强泛化能力**
+> 
 > - 每个专家专注于学习特定模式，有助于减少模型的**过拟合**，提高模型的泛化能力。
 
 > **更有效的计算资源利用**
+> 
 > - 大规模模型训练中，计算资源常常成为瓶颈。MoE 通过**稀疏激活**，让 GPU 或 TPU 只计算少量的专家模型，减少内存占用和计算负担。
 
 <font color="red">**关键问题2：MoE替代FFN层后，MoE具体如何训练？**</font>
@@ -1413,11 +1401,10 @@ MoE作为很好的输出模型，可以用于代替**Transformer**中的**前馈
 
 在引入 **MoE** 后，模型会为**每个 token 或每个时间步单独计算路由器输出**，从而决定该 token 应该使用哪些专家。这意味着：
 
-  - **每个 token 或每个位置**的计算会激活不同的专家。
-  - 每个专家在同一批次的不同 token 上可能会被多次激活。
+- **每个 token 或每个位置**的计算会激活不同的专家。
+- 每个专家在同一批次的不同 token 上可能会被多次激活。
 
 因此，在 MoE 中，<font color="red">**专家的选择是基于每个 token 进行的，而不是基于整个序列或批次**。</font>
-
 
 ```python
 Input sequence: [Token_1, Token_2, Token_3, Token_4]
@@ -1473,7 +1460,6 @@ $$\text{Total Loss} = \text{Main Loss} + \alpha \cdot \text{Auxiliary Loss}$$
 
 2. **激活 Top-k 专家**：路由器选择 **Top-k** 个得分最高的专家，并忽略其他专家。
 
-
 3. **Top-k 专家输出计算**：只有这 **Top-k** 个专家参与计算，其他专家的输出为 0，减少了计算开销。
 
 4. **加权求和得到最终输出**：路由器对这 **Top-k** 个专家的输出进行**加权求和**，得到模型的最终输出。
@@ -1484,41 +1470,49 @@ $$\text{Total Loss} = \text{Main Loss} + \alpha \cdot \text{Auxiliary Loss}$$
 
 2. **内存占用减少**：由于只计算部分专家的输出，内存占用大幅减少。这尤其适用于**大模型**，如 Switch Transformer，在保持模型大容量的同时减少推理时的内存占用。
 
-| **阶段**        | **训练**                                  | **推理**                                  |
-|----------------|-------------------------------------------|------------------------------------------|
-| **激活专家数**  | Top-k 专家参与计算，但所有专家更新参数      | 只激活 Top-k 专家，其他专家不计算         |
-| **反向传播**    | 需要反向传播和梯度计算                     | 不需要梯度计算                            |
-| **内存占用**    | 高（需要存储所有专家的参数和梯度）           | 低（只需要存储部分专家的输出）             |
-| **计算量**      | 高（所有专家的梯度都可能被更新）             | 低（只计算部分专家的输出）                 |
-| **负载均衡**    | 需要负载均衡，避免专家使用不均              | 不需要，因为只需一次前向传播               |
-| **跨设备通信**  | 需要频繁的跨设备通信                       | 通信需求较低                              |
+| **阶段**    | **训练**                 | **推理**               |
+| --------- | ---------------------- | -------------------- |
+| **激活专家数** | Top-k 专家参与计算，但所有专家更新参数 | 只激活 Top-k 专家，其他专家不计算 |
+| **反向传播**  | 需要反向传播和梯度计算            | 不需要梯度计算              |
+| **内存占用**  | 高（需要存储所有专家的参数和梯度）      | 低（只需要存储部分专家的输出）      |
+| **计算量**   | 高（所有专家的梯度都可能被更新）       | 低（只计算部分专家的输出）        |
+| **负载均衡**  | 需要负载均衡，避免专家使用不均        | 不需要，因为只需一次前向传播       |
+| **跨设备通信** | 需要频繁的跨设备通信             | 通信需求较低               |
 
 <font color="red">**关键问题4：MoE模型可用的aux_loss函数有哪些？具体如何实现？**</font>
 
 在 **Mixture of Experts (MoE)** 模型中，常见的辅助损失（auxiliary loss）用于帮助训练过程中的专家选择更加平衡，防止某些专家被过度选择或其他专家很少被选中。以下是几种常见的 MoE 辅助损失的例子：
 
 - 1. **负载平衡损失 (Load Balancing Loss)**：促进不同专家的负载更加平衡，避免过度依赖某个专家。一种常见的形式是使用专家的选择频率与分配的均衡性来构造。通常，目标是让每个专家的选择概率与理想的均匀分布更接近。
+     
      $$
      \text{aux\_loss} = \sum_{i=1}^{N} f_i \log(f_i)
      $$
+     
      其中 $ f_i $ 是第 $ i $ 个专家被选择的频率。
-<br><br>
+     <br><br>
 - 2. **基于熵的损失 (Entropy-based Loss)**：通过增加专家选择的熵，鼓励模型选择更多的专家来参与计算，从而减少某些专家的过载。
+     
      $$
      \text{aux\_loss} = - \sum_{i=1}^{N} P_i \log(P_i)
      $$
+     
      其中 $ P_i $ 是分配给第 $ i $ 个专家的概率。熵越高，说明分配越均匀。
-<br><br>
+     <br><br>
 - 3. **KL 散度损失 (KL Divergence Loss)**：将实际的专家选择分布与理想的均匀分布进行比较。
+     
      $$
      \text{aux\_loss} = \text{KL}(P || U)
      $$
+     
      其中 $ P $ 是模型计算出的专家分配概率分布，$ U $ 是理想的均匀分布。通过最小化 KL 散度，确保专家选择接近均匀分布，避免某些专家被过度使用。
-<br><br>
+     <br><br>
 - 4. **专家负载正则化 (Expert Load Regularization)**：控制每个专家的负载，使得负载接近于模型的理想目标负载，比如让每个专家处理相同数量的样本。
+     
      $$
      \text{aux\_loss} = \sum_{i=1}^{N} (\text{load}_i - \text{target\_load})^2
      $$
+     
      其中 $ \text{load}_i $ 是第 $ i $ 个专家的实际负载，$ \text{target\_load} $ 是理想的负载。
 
 这些辅助损失有助于 MoE 模型在分配专家时更加有效，平衡负载并避免某些专家过度工作或闲置。具体的实现和选择取决于模型的需求和场景。
@@ -1538,7 +1532,6 @@ $$
 
 这种方法类似于在负载平衡中的一个更直接的版本，避免了 `log` 函数的使用，这样可以让代码运行更快速，另外也可以让损失不那么敏感。`log` 函数通常用于拉伸分布，使得损失函数对极值更加敏感。在实现时如果直接使用每个专家的概率和使用频率的乘积，是一种较为简单的方式来衡量专家的平衡性。
 
-
 ```python
 import math
 import struct
@@ -1554,7 +1547,6 @@ from torch import nn
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 ```
-
 
 ```python
 import numpy as np
@@ -1621,15 +1613,9 @@ aux_loss_3 = calculate_aux_loss(weights_3, topk_3)
 aux_loss_1, aux_loss_2, aux_loss_3
 ```
 
-
-
-
     (0.6675000000000001, 0.6631250000000001, 0.8775000000000001)
 
-
-
 - **代码中的Pi计算与Fi计算**
-
 
 ```python
 bsz = 3
@@ -1647,20 +1633,11 @@ weights = F.linear(hidden_states, self_weight, None)
 weights.shape #每个token在每个专家上的得分
 ```
 
-
-
-
     torch.Size([30, 6])
-
-
-
 
 ```python
 weights #在这基础上求均值就是Pi
 ```
-
-
-
 
     tensor([[-12.3657,  17.0877, -18.9656,  -8.8610,  44.1774,  30.1824],
             [ 20.3411, -20.2856,   1.4306,  -5.1553,   2.7279,  -2.8289],
@@ -1693,30 +1670,21 @@ weights #在这基础上求均值就是Pi
             [ 25.6107,  -6.9439,  -2.6833, -17.3397,  26.0228,  52.3016],
             [-22.6098, -30.1528,   7.1860,  -0.5940, -18.1783,  10.4084]])
 
-
-
-
 ```python
 # 求解topK
 ```
-
 
 ```python
 weights = weights.softmax(-1) #6个专家的得分总和被归一化到[0,1]之间
 ```
 
-
 ```python
 topk_weight, topk_idx = torch.topk(weights, k=2, dim=-1, sorted=False)
 ```
 
-
 ```python
 topk_weight #每个token效果最好的两个专家上的权重
 ```
-
-
-
 
     tensor([[9.8320e-01, 1.6795e-02],
             [9.9403e-01, 5.9744e-03],
@@ -1749,15 +1717,9 @@ topk_weight #每个token效果最好的两个专家上的权重
             [7.7002e-01, 2.2997e-01],
             [9.8577e-01, 1.4225e-02]])
 
-
-
-
 ```python
 topk_idx #每个token激活的前2个专家
 ```
-
-
-
 
     tensor([[2, 3],
             [2, 1],
@@ -1790,9 +1752,6 @@ topk_idx #每个token激活的前2个专家
             [0, 5],
             [4, 0]])
 
-
-
-
 ```python
 # 拓展成类似于one-hot的结构
 topk_idx_for_aux_loss = topk_idx.view(3, -1)
@@ -1805,7 +1764,6 @@ mask_ce #Fi
 <font color="red">**关键问题5：MoE模型的具体实现**</font>
 
 <center><img src="https://skojiangdoc.oss-cn-beijing.aliyuncs.com/2024LLM/16.png" alt="描述文字" width="400"></center>
-
 
 ```python
 import torch
@@ -1919,7 +1877,6 @@ class MoEGate(nn.Module):
         return topk_idx, topk_weight, aux_loss
 ```
 
-
 ```python
 import torch
 
@@ -1931,8 +1888,6 @@ print(arry.repeat_interleave(2, dim=0))
             [1, 2, 3],
             [4, 5, 6],
             [4, 5, 6]])
-    
-
 
 ```python
 import torch
@@ -1942,13 +1897,13 @@ class MOEFeedForward(nn.Module):
     def __init__(self, config: LMConfig):
         """
         初始化 MOEFeedForward 类。
-        
+
         参数：
         - config: 包含模型配置的 LMConfig 对象，包括专家数量、维度、隐藏层维度和 dropout 参数。
         """
         super().__init__()
         self.config = config
-        
+
         # 创建多个专家网络的列表 (ModuleList)，每个专家是一个 FeedForward 层
         self.experts = nn.ModuleList([
             FeedForward(
@@ -2081,22 +2036,21 @@ class MOEFeedForward(nn.Module):
 搭建完整架构时、除了串联其并行化在深度学习模型的训练中至关重要，特别是当模型架构需要与 **DeepSpeed** 和 **Hugging Face** 等库的分布式训练或并行功能相结合时。为了实现这一目标，我们需要首先了解 **数据并行（Data Parallelism）** 和 **模型并行（Model Parallelism）** 这两种主要的并行方式，并明确架构中哪些关键部分与这些并行策略相关联。
 
 - 1. **数据并行与模型并行的认识**<br><br>
-   - **数据并行**：这是一种常见的并行方式，适用于将相同的模型副本应用于不同的数据切片上。例如，如果有多块 GPU，数据并行会将输入数据批次切分成多个小批次，每个 GPU 上都运行相同的模型副本，同时处理不同的数据子集。这意味着每个设备都计算自己那部分的梯度，然后将所有设备上的梯度汇总，从而对模型进行全局更新。
-   - **模型并行**：模型并行则适用于非常大的模型，这些模型可能单个设备的内存不足以容纳。模型并行通过将模型的不同部分分布在不同设备上来解决这个问题。模型的不同层或不同的部分会在不同的 GPU 上进行前向和反向传播计算。通常，模型并行用于特别大的神经网络架构，如 Transformer 或 GPT 模型。
-<br><br>
+     - **数据并行**：这是一种常见的并行方式，适用于将相同的模型副本应用于不同的数据切片上。例如，如果有多块 GPU，数据并行会将输入数据批次切分成多个小批次，每个 GPU 上都运行相同的模型副本，同时处理不同的数据子集。这意味着每个设备都计算自己那部分的梯度，然后将所有设备上的梯度汇总，从而对模型进行全局更新。
+     - **模型并行**：模型并行则适用于非常大的模型，这些模型可能单个设备的内存不足以容纳。模型并行通过将模型的不同部分分布在不同设备上来解决这个问题。模型的不同层或不同的部分会在不同的 GPU 上进行前向和反向传播计算。通常，模型并行用于特别大的神经网络架构，如 Transformer 或 GPT 模型。
+       <br><br>
 - 2. **架构中与并行相关的关键**<br><br>
-   - **模型定义**：在设计模型时，需要确保它能够支持并行化。模型的每一层都需要使用标准的 PyTorch 模块（例如 `torch.nn.ModuleList`）来定义，这样可以确保模型在多设备上运行时保持一致性。特别是每一层的输入和输出维度必须匹配，以便于在数据并行或模型并行时正确地传播数据和梯度。你的代码中通过 `TransformerBlock` 和 `torch.nn.ModuleList` 模块化模型结构，这种设计便于并行扩展。
-   - **支持并行化**：确保模型的架构可以支持数据并行（Data Parallelism）和模型并行（Model Parallelism）。这意味着在定义时要保持各层输入输出尺寸的一致性，便于 DeepSpeed 进行分布式处理。
-<br><br>
+     - **模型定义**：在设计模型时，需要确保它能够支持并行化。模型的每一层都需要使用标准的 PyTorch 模块（例如 `torch.nn.ModuleList`）来定义，这样可以确保模型在多设备上运行时保持一致性。特别是每一层的输入和输出维度必须匹配，以便于在数据并行或模型并行时正确地传播数据和梯度。你的代码中通过 `TransformerBlock` 和 `torch.nn.ModuleList` 模块化模型结构，这种设计便于并行扩展。
+     - **支持并行化**：确保模型的架构可以支持数据并行（Data Parallelism）和模型并行（Model Parallelism）。这意味着在定义时要保持各层输入输出尺寸的一致性，便于 DeepSpeed 进行分布式处理。
+       <br><br>
 - 3. **与 DeepSpeed 和 Hugging Face 的结合**<br><br>
-   - **使用 Hugging Face 和 DeepSpeed 的配置文件**：在与 Hugging Face 生态系统兼容时，通常需要使用或继承 Hugging Face 的 `PreTrainedModel` 类，并确保模型定义与配置文件（config 文件）相匹配。配置文件中需要定义诸如模型的层数、嵌入维度、注意力头数等超参数，确保 Hugging Face 的 `Trainer` 工具能够正确加载和使用模型。同时，DeepSpeed 允许你通过简化模型并行和梯度计算来进行高效的分布式训练，因此在配置文件中还需要与 DeepSpeed 兼容的设置，例如启用 `zero_optim` 或 `activation checkpointing`。
-   - **分布式数据并行（DDP）**：DeepSpeed 和 Hugging Face 的分布式训练依赖于 PyTorch 的 `DistributedDataParallel`（DDP）。DDP 通过在多个 GPU 上并行处理数据来加速训练。因此，模型的定义需要支持在多机或多 GPU 环境中运行，并且模型的前向和后向传播需要能够同时在多个设备上进行。你的代码中已经通过模块化的设计方式，为 DDP 的使用提供了基础，但还需要结合 PyTorch 的 `torch.distributed.init_process_group()` 来初始化分布式进程，确保训练过程中的同步。
-<br><br>
+     - **使用 Hugging Face 和 DeepSpeed 的配置文件**：在与 Hugging Face 生态系统兼容时，通常需要使用或继承 Hugging Face 的 `PreTrainedModel` 类，并确保模型定义与配置文件（config 文件）相匹配。配置文件中需要定义诸如模型的层数、嵌入维度、注意力头数等超参数，确保 Hugging Face 的 `Trainer` 工具能够正确加载和使用模型。同时，DeepSpeed 允许你通过简化模型并行和梯度计算来进行高效的分布式训练，因此在配置文件中还需要与 DeepSpeed 兼容的设置，例如启用 `zero_optim` 或 `activation checkpointing`。
+     - **分布式数据并行（DDP）**：DeepSpeed 和 Hugging Face 的分布式训练依赖于 PyTorch 的 `DistributedDataParallel`（DDP）。DDP 通过在多个 GPU 上并行处理数据来加速训练。因此，模型的定义需要支持在多机或多 GPU 环境中运行，并且模型的前向和后向传播需要能够同时在多个设备上进行。你的代码中已经通过模块化的设计方式，为 DDP 的使用提供了基础，但还需要结合 PyTorch 的 `torch.distributed.init_process_group()` 来初始化分布式进程，确保训练过程中的同步。
+       <br><br>
 - 4. **权重初始化与保存**<br><br>
-   在分布式训练中，模型的保存和加载方式略有不同，特别是当使用 DeepSpeed 时，模型的检查点（checkpoint）保存和恢复需要使用其专用 API。例如，DeepSpeed 提供了 `deepspeed.save_checkpoint` 和 `deepspeed.load_checkpoint` 函数，以确保模型参数和优化器状态在分布式环境下正确存储和恢复。你的代码在初始化权重时使用了特定的初始化策略，如对 `wo.weight` 和 `w3.weight` 的正态分布初始化，这有助于保证模型的训练收敛性。 
-<br><br>
-要让模型架构能够与 **DeepSpeed** 和 **Hugging Face** 的分布式训练功能相结合，首先需要理解数据并行与模型并行的基本概念，确保模型的设计可以支持这些并行方式。模型定义时，应注意权重的共享与初始化，保证层间输入输出尺寸的兼容性。此外，合理配置模型的 `config` 文件，使其能够与 Hugging Face 的 `Trainer` 工具和 DeepSpeed 的分布式优化功能结合使用，这对于大规模模型的训练和推理至关重要。
-
+     在分布式训练中，模型的保存和加载方式略有不同，特别是当使用 DeepSpeed 时，模型的检查点（checkpoint）保存和恢复需要使用其专用 API。例如，DeepSpeed 提供了 `deepspeed.save_checkpoint` 和 `deepspeed.load_checkpoint` 函数，以确保模型参数和优化器状态在分布式环境下正确存储和恢复。你的代码在初始化权重时使用了特定的初始化策略，如对 `wo.weight` 和 `w3.weight` 的正态分布初始化，这有助于保证模型的训练收敛性。 
+     <br><br>
+     要让模型架构能够与 **DeepSpeed** 和 **Hugging Face** 的分布式训练功能相结合，首先需要理解数据并行与模型并行的基本概念，确保模型的设计可以支持这些并行方式。模型定义时，应注意权重的共享与初始化，保证层间输入输出尺寸的兼容性。此外，合理配置模型的 `config` 文件，使其能够与 Hugging Face 的 `Trainer` 工具和 DeepSpeed 的分布式优化功能结合使用，这对于大规模模型的训练和推理至关重要。
 
 ```python
 class TransformerBlock(nn.Module):
@@ -2147,7 +2101,6 @@ class TransformerBlock(nn.Module):
         out = h + self.feed_forward(self.ffn_norm(h))
         return out  # 返回最终输出
 ```
-
 
 ```python
 class Transformer(PreTrainedModel):
@@ -2306,7 +2259,6 @@ class Transformer(PreTrainedModel):
 
 ## 8. 配置文件的搭建
 
-
 ```python
 from transformers import PretrainedConfig
 from typing import List
@@ -2359,7 +2311,6 @@ class LMConfig(PretrainedConfig):
         self.norm_topk_prob = norm_topk_prob  # 是否标准化top-k概率
         super().__init__(**kwargs)
 ```
-
 
 ```python
 # from .LMConfig import LMConfig
