@@ -1,7 +1,7 @@
 # LLM-Agent-HandsOn
 # DS-Agent - 基于大语言模型构建的智能问答系统
 
-一个基于 FastAPI 和 Vue 3 构建的前后端分离的智能问答项目，支持多种大语言模型，如DeepSeek V3，Qwen2.5系列，Llama3系列等。涵盖了 Agent、RAG 在智能客服领域的主流应用落地需求场景。 
+一个基于 FastAPI 和 Vue 3 构建的前后端分离的智能问答项目，支持多种大语言模型，如DeepSeek V3，Qwen2.5系列，Llama3系列等。涵盖了 Agent、RAG 在智能问答的应用场景。 
 
 ## 功能特性
 
@@ -49,7 +49,8 @@ DEEPSEEK_MODEL=deepseek-chat    # 通用对话模型
 # Ollama 配置
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_CHAT_MODEL=qwen2.5:1.5b            # 通用对话模型
-OLLAMA_REASON_MODEL=deepseek-r1:1.5b       # 深度思考模型
+OLLAMA_REASON_MODEL=deepseek-r1:1.5b      # 深度思考模型
+OLLAMA_EMBEDDING_MODEL=bge-m3             # 向量检索模型
 
 # SerpAPI 配置 (搜索增强) , 注册地址：https://serpapi.com/
 SERPAPI_KEY=your-serpapi-key
@@ -62,7 +63,7 @@ DB_NAME=ds_agent
 ```
 ### 3. 数据库设置
 1. 安装Mysql数据库并在 `.env` 文件中配置数据库连接信息
-2. 运行`./llm_backend/scripts/init_db.py`文件, 完成对数据库的初始化。
+2. **运行**`./llm_backend/scripts/init_db.py`文件, 完成对数据库的初始化。
 
 ### 4. 启动服务
 
@@ -93,8 +94,10 @@ uvicorn.run(
 - 后端：
   - FastAPI
   - SQLAlchemy
+  - LangGraph/LangChain
   - MySQL
   - Ollama/DeepSeek
+  - Redis缓存
 
 - 前端：
   - Vue 3
@@ -113,6 +116,9 @@ uvicorn.run(
    - 可以启用 `reload=True` 实现热重载
    - 可以设置 `log_level="debug"` 查看更多日志
 
+## 更新日志
+- 2025.03.21: 完成DS-Agent与Bili-Agent的合并，目前DS-Agent中的联网搜索功能支持SerpAPI联网搜索、Bilibili-API网站视频搜索和Arxiv-API论文搜索。其中，Bilibili-API网站视频搜索和Arxiv-API论文搜索均基于LangGraph构建，可以实现用户意图的语义理解和知识搜索。
+
 ## TODO
 1. 项目技术文档完善, 增加Redis缓存, SQLAlchemy连接池等
-
+2. Tools开发，增加Agent工具数量
