@@ -3,6 +3,8 @@ from app.core.config import settings, ServiceType
 from app.services.deepseek_service import DeepseekService
 from app.services.ollama_service import OllamaService
 from app.services.search_service import SearchService
+
+
 class LLMFactory:
     @staticmethod
     def create_chat_service():

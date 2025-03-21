@@ -2,6 +2,7 @@ import requests
 from typing import List, Dict
 from app.core.config import settings
 
+
 class SearchTool:
     def __init__(self):
         self.api_key = settings.SERPAPI_KEY
@@ -47,4 +48,4 @@ class SearchTool:
                     "snippet": item.get("snippet", ""),
                 })
                 
-        return results[:settings.SEARCH_RESULT_COUNT]  # 使用配置中的数量限制结果 
+        return results[:settings.SEARCH_RESULT_COUNT]  # 使用配置中的数量限制结果

@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Callable
 import json
 from dataclasses import dataclass
 
+
 @dataclass
 class FunctionTool:
     """函数工具定义"""
@@ -9,6 +10,7 @@ class FunctionTool:
     description: str
     parameters: Dict
     handler: Callable
+
 
 class ToolRegistry:
     """工具注册中心"""
@@ -41,4 +43,4 @@ class ToolRegistry:
             raise ValueError(f"Tool {name} not found")
         
         args = json.loads(arguments)
-        return await tool.handler(**args) 
+        return await tool.handler(**args)

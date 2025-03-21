@@ -21,7 +21,6 @@ from app.models.message import Message
 from sqlalchemy import select
 from app.services.conversation_service import ConversationService
 
-
 # 配置上传目录 - RAG 功能的
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -48,25 +47,31 @@ app.add_middleware(
 # 1. 用户注册、登录路由通过 api_router 路由挂载到 /api 前缀
 app.include_router(api_router, prefix="/api")
 
+
 class ReasonRequest(BaseModel):
     messages: List[Dict[str, str]]
     user_id: int
+
 
 class ChatMessage(BaseModel):
     messages: List[Dict[str, str]]
     user_id: int
     conversation_id: int  # 添加会话ID字段
 
+
 class RAGChatRequest(BaseModel):
     messages: List[Dict[str, str]]
     index_id: str
     user_id: int
 
+
 class CreateConversationRequest(BaseModel):
     user_id: int
 
+
 class UpdateConversationNameRequest(BaseModel):
     name: str
+
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatMessage):
@@ -74,7 +79,7 @@ async def chat_endpoint(request: ChatMessage):
     try:
         logger.info(f"Processing chat request for user {request.user_id} in conversation {request.conversation_id}")
         chat_service = LLMFactory.create_chat_service()
-        
+
         return StreamingResponse(
             chat_service.generate_stream(
                 messages=request.messages,
@@ -88,27 +93,29 @@ async def chat_endpoint(request: ChatMessage):
         logger.error(f"Chat error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/reason")
 async def reason_endpoint(request: ReasonRequest):
     """推理接口"""
     try:
         logger.info(f"Processing reasoning request for user {request.user_id}")
         reasoner = LLMFactory.create_reasoner_service()
-        
+
         log_structured("reason_request", {
             "user_id": request.user_id,
             "message_count": len(request.messages),
             "last_message": request.messages[-1]["content"][:100] + "..."
         })
-        
+
         return StreamingResponse(
             reasoner.generate_stream(request.messages),
             media_type="text/event-stream"
         )
-    
+
     except Exception as e:
         logger.error(f"Reasoning error for user {request.user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/search")
 async def search_endpoint(request: ChatMessage):
@@ -126,7 +133,7 @@ async def search_endpoint(request: ChatMessage):
             ),
             media_type="text/event-stream"
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -140,19 +147,19 @@ async def upload_file(file: UploadFile = File(...)):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{file.filename}"
         file_path = UPLOAD_DIR / filename
-        
+
         # 确保上传目录存在
         UPLOAD_DIR.mkdir(exist_ok=True)
-        
+
         # 保存文件
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
-            
+
         # 获取文件类型
         file_type = file.content_type
         file_ext = Path(file.filename).suffix.lower()
-        
+
         # 返回文件信息
         file_info = {
             "filename": filename,
@@ -161,31 +168,31 @@ async def upload_file(file: UploadFile = File(...)):
             "type": file_type,
             "path": str(file_path).replace('\\', '/'),  # 使用正斜杠
         }
-        
-        print(f"文件已保存到: {file_path}")  # 添加日志
-        
 
-                # 初始化 RAG 服务
+        print(f"文件已保存到: {file_path}")  # 添加日志
+
+        # 初始化 RAG 服务
         rag_service = RAGService()
         # 初始化 RAG 处理
         rag_result = await rag_service.process_file(file_info)
-        
+
         # 合并结果
         result = {**file_info, **rag_result}
-        
+
         log_structured("file_upload", {
             "filename": file.filename,
             "size": len(content),
             "type": file_type
         })
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Upload failed: {str(e)}", exc_info=True)
         return {"error": str(e)}
-    
+
     return f"data: {result}\n\n"
+
 
 @app.post("/chat-rag")
 async def rag_chat_endpoint(request: RAGChatRequest):
@@ -193,7 +200,7 @@ async def rag_chat_endpoint(request: RAGChatRequest):
     try:
         logger.info(f"Processing RAG chat request for user {request.user_id}")
         rag_chat_service = RAGChatService()
-        
+
         return StreamingResponse(
             rag_chat_service.generate_stream(
                 request.messages,
@@ -232,6 +239,7 @@ async def get_user_conversations(user_id: int):
         logger.error(f"Error getting conversations: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/conversations/{conversation_id}/messages")
 async def get_conversation_messages(conversation_id: int, user_id: int):
     """获取会话的所有消息"""
@@ -244,6 +252,7 @@ async def get_conversation_messages(conversation_id: int, user_id: int):
         logger.error(f"Error getting messages: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.delete("/api/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: int):
     """删除会话及其所有消息"""
@@ -255,10 +264,11 @@ async def delete_conversation(conversation_id: int):
         logger.error(f"删除会话失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.put("/api/conversations/{conversation_id}/name")
 async def update_conversation_name(
-    conversation_id: int,
-    request: UpdateConversationNameRequest
+        conversation_id: int,
+        request: UpdateConversationNameRequest
 ):
     """修改会话名称"""
     try:
@@ -268,6 +278,7 @@ async def update_conversation_name(
     except Exception as e:
         logger.error(f"更新会话名称失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # 最后挂载静态文件，并确保使用绝对路径
 STATIC_DIR = Path(__file__).parent / "static" / "dist"

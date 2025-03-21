@@ -1,16 +1,22 @@
 from typing import List, Dict, AsyncGenerator, Optional, Callable
 import json
 import asyncio
+from langchain_core.documents import Document
+
+from regex import P
 from app.tools.search import SearchTool
+from app.tools.bili_search import BiliSearchTool
+from app.tools.get_arxiv import ArxivAPIWrapper
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.tools.definitions import SEARCH_TOOL, TOOL_DEFINITIONS
+from app.tools.definitions import SEARCH_TOOL, TOOL_DEFINITIONS, BILISEARCH_TOOL
 from app.services.function_tools import ToolRegistry, FunctionTool
 from app.prompts.search_prompts import SEARCH_SYSTEM_PROMPT, SEARCH_SUMMARY_PROMPT
 from datetime import datetime
 
 logger = get_logger(service="search")
+
 
 class SearchService:
     def __init__(self):
@@ -21,7 +27,9 @@ class SearchService:
         )
         self.model = settings.DEEPSEEK_MODEL
         self.search_tool = SearchTool()
-        
+        self.bili_search_tool = BiliSearchTool()
+        self.arxiv_tool = ArxivAPIWrapper()
+
         # 初始化工具注册中心
         self.tool_registry = ToolRegistry()
         
@@ -30,9 +38,25 @@ class SearchService:
             **SEARCH_TOOL,  # 展开工具定义
             handler=self._handle_search
         ))
+        self.tool_registry.register(FunctionTool(
+            **TOOL_DEFINITIONS["bili_search"],  # 展开工具定义
+            handler=None  # 不使用回调，直接在流式生成中处理
+        ))
+        self.tool_registry.register(FunctionTool(
+            **TOOL_DEFINITIONS["arxiv_search"],  # 展开工具定义
+            handler=self._handle_search_arxiv
+        ))
         
         # 生成工具描述提示
         self.tools_description = self._generate_tools_description()
+
+    async def _handle_search(self, query: str) -> List[Dict]:
+        """处理搜索请求"""
+        return await asyncio.to_thread(self.search_tool.search, query)
+    
+    def _handle_search_arxiv(self, query: str) -> List[Document]:
+        """处理Arxiv搜索请求"""
+        return self.arxiv_tool.get_summaries_as_docs(query)
 
     def _generate_tools_description(self) -> str:
         """根据工具定义生成工具描述提示"""
@@ -60,10 +84,6 @@ class SearchService:
             "你现在可用的工具有：\n\n" + 
             "\n".join(tool_descriptions)
         )
-
-    async def _handle_search(self, query: str) -> List[Dict]:
-        """处理搜索请求"""
-        return await asyncio.to_thread(self.search_tool.search, query)
 
     async def _call_with_tool(self, query: str) -> Dict:
         """调用模型并获取工具调用结果"""
@@ -123,64 +143,154 @@ class SearchService:
                     logger.info(f"Processing tool call: {tool_call}")
                     
                     try:
-                        # 执行工具调用
-                        search_results = await self.tool_registry.execute_tool(
-                            tool_call.function.name,
-                            tool_call.function.arguments
-                        )
-                        logger.info(f"Got {len(search_results)} search results")
-                        
-                        if search_results:
-                            # 构建上下文内容
-                            context = []
-                            for result in search_results:
-                                context.append(
-                                    f"来源：{result['title']}\n"
-                                    f"链接：{result['url']}\n"
-                                    f"内容：{result['snippet']}\n"
-                                )
+                        if tool_call.function.name == "search":
+                            # 执行工具调用
+                            search_results = await self.tool_registry.execute_tool(
+                                tool_call.function.name,
+                                tool_call.function.arguments
+                            )
+                            logger.info(f"Got {len(search_results)} search results")
                             
-                            # 构造带上下文的提示
-                            context_prompt = SEARCH_SUMMARY_PROMPT.format(
-                                context="\n---\n".join(context),
-                                query=query,
-                                cur_date=datetime.now().strftime("%Y年%m月%d日")
+                            if search_results:
+                                # 构建上下文内容
+                                context = []
+                                for result in search_results:
+                                    context.append(
+                                        f"来源：{result['title']}\n"
+                                        f"链接：{result['url']}\n"
+                                        f"内容：{result['snippet']}\n"
+                                    )
+                                
+                                # 构造带上下文的提示
+                                context_prompt = SEARCH_SUMMARY_PROMPT.format(
+                                    context="\n---\n".join(context),
+                                    query=query,
+                                    cur_date=datetime.now().strftime("%Y年%m月%d日")
+                                )
+                                
+                                # 先返回一个类型标识，告诉前端这是搜索结果
+                                yield f"data: {json.dumps(obj={'type': 'search_start'}, ensure_ascii=False)}\n\n"
+                                
+                                # 返回搜索结果
+                                # print(json.loads(tool_call.function.arguments)["query"])
+                                search_data = {
+                                    "type": "search_results",  # 保持原有的类型标识
+                                    "total": len(search_results),
+                                    "query": json.loads(tool_call.function.arguments)["query"],
+                                    "results": [
+                                        {
+                                            "title": result["title"],
+                                            "url": result["url"],
+                                            "snippet": result["snippet"]
+                                        }
+                                        for result in search_results
+                                    ]
+                                }
+                                # print(search_data)
+                                yield f"data: {json.dumps(search_data, ensure_ascii=False)}\n\n"
+                                
+                                # 使用新的消息上下文生成回复
+                                async for chunk in await self.client.chat.completions.create(
+                                    model=self.model,
+                                    messages=[
+                                        {"role": "system", "content": context_prompt}
+                                    ],
+                                    stream=True
+                                ):      
+                                    if chunk.choices[0].delta.content:
+                                        content = json.dumps(chunk.choices[0].delta.content, ensure_ascii=False)
+                                        yield f"data: {content}\n\n"
+
+                        elif tool_call.function.name == "arxiv_search":
+                            # 执行工具调用
+                            args = json.loads(tool_call.function.arguments)
+                            search_results = self.arxiv_tool.get_summaries_as_docs(
+                                **args
                             )
                             
-                            # 先返回一个类型标识，告诉前端这是搜索结果
-                            yield f"data: {json.dumps({'type': 'search_start'}, ensure_ascii=False)}\n\n"
+                            logger.info(f"Got {len(search_results)} arxiv search results")
                             
-                            # 返回搜索结果
-                            search_data = {
-                                "type": "search_results",  # 保持原有的类型标识
-                                "total": len(search_results),
-                                "query": json.loads(tool_call.function.arguments)["query"],
-                                "results": [
-                                    {
-                                        "title": result["title"],
-                                        "url": result["url"],
-                                        "snippet": result["snippet"]
-                                    }
-                                    for result in search_results
-                                ]
-                            }
-                            yield f"data: {json.dumps(search_data, ensure_ascii=False)}\n\n"
-                            
-                            # 使用新的消息上下文生成回复
-                            async for chunk in await self.client.chat.completions.create(
-                                model=self.model,
-                                messages=[
-                                    {"role": "system", "content": context_prompt}
-                                ],
-                                stream=True
-                            ):      
+                            if search_results:
+                                # 构建上下文内容
+                                context = []
+                                for result in search_results:
+                                    context.append(
+                                        f"论文标题：{result.metadata["Title"]}\n"
+                                        f"论文链接：{result.metadata["Entry ID"]}\n"
+                                        f"论文摘要：{result.page_content}\n"
+                                        f"论文作者：{result.metadata["Authors"]}\n"
+                                        f"论文最后更新时间：{result.metadata["Published"]}\n"
+                                        f"论文首次发布日期：{result.metadata["published_first_time"]}\n"
+                                        f"论文注释：{result.metadata["comment"]}\n"
+                                        f"论文分类：{result.metadata["primary_category"]}\n"
+                                    )
+                                
+                                # 构造带上下文的提示
+                                context_prompt = SEARCH_SUMMARY_PROMPT.format(
+                                    context="\n---\n".join(context),
+                                    query=query,
+                                    cur_date=datetime.now().strftime("%Y年%m月%d日")
+                                )
+                                
+                                # 先返回一个类型标识，告诉前端这是搜索结果
+                                yield f"data: {json.dumps(obj={'type': 'search_start'}, ensure_ascii=False)}\n\n"
+                                
+                                # 返回搜索结果
+                                # print(json.loads(tool_call.function.arguments)["query"])
+                                search_data = {
+                                    "type": "search_results",  # 保持原有的类型标识
+                                    "total": len(search_results),
+                                    "query": json.loads(tool_call.function.arguments)["query"],
+                                    "results": [
+                                        {
+                                            "title": result.metadata["Title"],
+                                            "url": result.metadata["Entry ID"],
+                                            "snippet": result.page_content
+                                        }
+                                        for result in search_results
+                                    ]
+                                }
+                                # print(search_data)
+                                yield f"data: {json.dumps(search_data, ensure_ascii=False)}\n\n"
+                                
+                                # 使用新的消息上下文生成回复
+                                async for chunk in await self.client.chat.completions.create(
+                                    model=self.model,
+                                    messages=[
+                                        {"role": "system", "content": context_prompt}
+                                    ],
+                                    stream=True
+                                ):      
+                                    if chunk.choices[0].delta.content:
+                                        content = json.dumps(chunk.choices[0].delta.content, ensure_ascii=False)
+                                        yield f"data: {content}\n\n"
 
-                                if chunk.choices[0].delta.content:
-                                    content = json.dumps(chunk.choices[0].delta.content, ensure_ascii=False)
-                                    yield f"data: {content}\n\n"
-             
+                        elif tool_call.function.name == "bili_search":
+                            # API回答的情况，使用流式响应
+                            logger.info("Model chose to answer by BiliBili API, streaming response...")
+
+                            # 先返回一个类型标识，告诉前端这是API回答
+                            yield f"data: {json.dumps({'type': 'direct_answer'}, ensure_ascii=False)}\n\n"
+
+                            args = json.loads(tool_call.function.arguments)
+                            input_text = args["query"]
+                            input_all = {"input": input_text}
+                            finish_flag = False
+                            chain = self.bili_search_tool.create_workflow()
+                            async for event in chain.astream_events(input_all, version="v2"):
+                                kind = event["event"]
+                                if kind == "on_chat_model_stream" and not finish_flag:
+                                    generate = event["metadata"]["langgraph_node"]
+                                    chunk = event["data"]["chunk"]
+                                    if generate == "generate":
+                                        content = json.dumps({
+                                            "type": "direct_content",
+                                            "content": chunk.content
+                                        }, ensure_ascii=False)
+                                        yield f"data: {content}\n\n"
+                                        finish_flag = (chunk.response_metadata.get("finish_reason", False) == "stop")
                     except Exception as e:
-                        pass
+                        print(e)
                 
             elif choice.finish_reason == "stop":
                 # 直接回答的情况，使用流式响应
