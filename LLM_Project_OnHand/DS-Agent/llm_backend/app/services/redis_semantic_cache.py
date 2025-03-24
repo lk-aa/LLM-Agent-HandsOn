@@ -133,7 +133,7 @@ class RedisSemanticCache:
     async def _update_metadata(self, message: str):
         """更新缓存项的元数据"""
         try:
-            meta_key = self._get_metadata_key(message)
+            meta_key: str = self._get_metadata_key(message)
             # 从Redis读取的是bytes,需要解码
             current_meta = self.redis.get(meta_key)
             if current_meta:
