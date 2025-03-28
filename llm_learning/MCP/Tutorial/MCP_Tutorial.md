@@ -1923,4 +1923,4 @@ npx -y @modelcontextprotocol/inspector uv run server.py
 此外，还有一些为MCP量身定制的Agent开发框架，通过集成MCP来提高Agent开发进度：
 https://github.com/lastmile-ai/mcp-agent
 
-<div align=center><img src="./assets/mcp_client_3.PNG" width=80%></div>
+<div align=center><img src="./assets/mcp_client_3.png" width=80%></div>
